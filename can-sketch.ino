@@ -1,13 +1,13 @@
-#include <can.h>              //подключаем библиотеку CAN
-#include <mcp2515.h>          //подключаем библиотеку mcp2515
-#include <SPI.h>              //подключаем библиотеку SPI
+#include <can.h>              // Include the CAN library
+#include <mcp2515.h>          // Include the MCP2515 library
+#include <SPI.h>              // Include the SPI library
 
-struct can_frame canMsg;      //создаем структуру принимаемого пакета can
-struct can_frame new_canMsg;  //создаем структуру отправляемого пакета can
+struct can_frame canMsg;      // Create a structure for the received CAN frame
+struct can_frame new_canMsg;  // Create a structure for the CAN frame to send
 
 MCP2515 mcp2515(10);          //  
 
-void setup()                  //задаем настройки серийного интерфейса, интерфейса работы с can-шиной
+void setup()                  // Configure the serial interface and CAN bus
 {
   Serial.begin(115200);
   SPI.begin();
@@ -17,48 +17,48 @@ void setup()                  //задаем настройки серийног
   mcp2515.setNormalMode();
 }
 
-int front_panel_command;      //объявляем переменную команды от панели FMUX (5 байт - нумерация с 0)
-int steer_key_1;              //объявляем переменную команды нажатия кнопки на руле 
-int steer_key_2;              //объявляем переменную команды нажатия кнопки на руле
-int volume;                   //объявляем переменную текущего значения громкости
+int front_panel_command;      // Declare the FMUX panel command variable (byte 5, zero-based)
+int steer_key_1;              // Declare the steering wheel button command variable
+int steer_key_2;              // Declare the steering wheel button command variable
+int volume;                   // Declare the variable for the current volume level
 
-void loop()                   //запускаем цикл чтения данных данных в can-шине
+void loop()                   // Start the CAN bus data-reading loop
 {
-  if (mcp2515.readMessage(&canMsg) == MCP2515::ERROR_OK)          //если нет ошибок, работаем дальше
+  if (mcp2515.readMessage(&canMsg) == MCP2515::ERROR_OK)          // Continue if there are no errors
   {
-    if (canMsg.can_id == 0x122)                                 //если пакет поступил от панели FMUX
+    if (canMsg.can_id == 0x122)                                 // If the frame came from the FMUX panel
     { 
-      //далее определяется способ увеличения громкости. От него зависит, какую команду от имени панели FMUX необходимо отправить, 
-      //чтобы кнопка регулировки громкости на руле корректно сработала.  
-      if(canMsg.data[5] == 0)                                 //данное значение правдиво при выходе автомобиля из сна, если не 
-      //использована регулировка громкости на панели FMUX либо на руле (через Arduino)
+      // Determine how volume is controlled. This determines which command to send on behalf of the
+      // FMUX panel so the steering wheel volume buttons work correctly.
+      if(canMsg.data[5] == 0)                                 // This value is present when the car wakes up if volume has not
+      // yet been adjusted using the FMUX panel or steering wheel (via Arduino)
       {
-        steer_key_1 = 0x08;                                 //переменной присваиваем значение кнопки увеличения громкости
-        steer_key_2 = 0x04;                                 //переменной присваиваем значение кнопки уменьшения громкости
-        front_panel_command = 0x02;                         //переменной присваиваем знаение 0 (5 байт)
+        steer_key_1 = 0x08;                                 // Assign the volume-up button value
+        steer_key_2 = 0x04;                                 // Assign the volume-down button value
+        front_panel_command = 0x02;                         // Assign the value 0 (byte 5)
       }
       
-      else if(canMsg.data[5] == 2)                            //данное сравнение правдиво, если уже использована регулировка громкости на панели FMUX 
-      //либо на руле (через Arduino)
+      else if(canMsg.data[5] == 2)                            // This condition is true if volume has already been adjusted using
+      // the FMUX panel or steering wheel (via Arduino)
       {
-        steer_key_1 = 0x04;                                 //переменной присваиваем значение кнопки уменьшения громкости
-        steer_key_2 = 0x08;                                 //переменной присваиваем значение кнопки увеличения громкости     
-        front_panel_command = 0x00;                         //переменной присваиваем знаение 0 (5 байт)        
+        steer_key_1 = 0x04;                                 // Assign the volume-down button value
+        steer_key_2 = 0x08;                                 // Assign the volume-up button value
+        front_panel_command = 0x00;                         // Assign the value 0 (byte 5)
       }
       
       else
       {
-        //ничего не делаем, иных данных нет
+        // Do nothing; there is no other data
       }
       
-      volume = canMsg.data[6];                                //присваиваем значение текущего положения регулятора громкости панели FMUX    
+      volume = canMsg.data[6];                                // Store the current FMUX panel volume level
     }
     
-    if (canMsg.can_id == 0x21F)                                 //если пакет поступил от кнопок руля
+    if (canMsg.can_id == 0x21F)                                 // If the frame came from the steering wheel buttons
     {     
-      if (canMsg.data[0] == steer_key_1)                      //определяем, какая кнопка нажата  
+      if (canMsg.data[0] == steer_key_1)                      // Determine which button was pressed
       {                
-        //значения регулятора громкости на панели FMUX меняются от 0 до 255 в цикле. При достижении 255 - следующее значение 0. В обратную сторону также.
+        // The FMUX panel volume value cycles from 0 to 255. After 255, the next value is 0, and vice versa.
         if (volume == 255)
         {
           volume = 0;
@@ -69,23 +69,23 @@ void loop()                   //запускаем цикл чтения дан�
           volume++;   
         }
                 
-        new_canMsg.can_id  = 0x122;                  //присваеваем id панели FMUX
-        new_canMsg.can_dlc = 8;                      //указываем длину пакета
-        new_canMsg.data[0] = 0x00;                   //пустые данные
-        new_canMsg.data[1] = 0x00;                   //пустые данные 
-        new_canMsg.data[2] = 0x00;                   //пустые данные
-        new_canMsg.data[3] = 0x00;                   //пустые данные 
-        new_canMsg.data[4] = 0x00;                   //пустые данные
-        new_canMsg.data[5] = front_panel_command;    //команда панели
-        new_canMsg.data[6] = volume;                 //присваеваем новый уровень громкости
-        new_canMsg.data[7] = 0x00;                   //пустые данные
+        new_canMsg.can_id  = 0x122;                  // Assign the FMUX panel ID
+        new_canMsg.can_dlc = 8;                      // Set the frame length
+        new_canMsg.data[0] = 0x00;                   // Empty data
+        new_canMsg.data[1] = 0x00;                   // Empty data
+        new_canMsg.data[2] = 0x00;                   // Empty data
+        new_canMsg.data[3] = 0x00;                   // Empty data
+        new_canMsg.data[4] = 0x00;                   // Empty data
+        new_canMsg.data[5] = front_panel_command;    // Panel command
+        new_canMsg.data[6] = volume;                 // Assign the new volume level
+        new_canMsg.data[7] = 0x00;                   // Empty data
         
-        mcp2515.sendMessage(&new_canMsg);            //отправляем новую команду изменения уровня громкости
+        mcp2515.sendMessage(&new_canMsg);            // Send the command to change the volume level
         
-        delay(150);                                  //задержка 0,15 сек.
+        delay(150);                                  // 0.15-second delay
       }
       
-      if (canMsg.data[0] == steer_key_2)                      //определяем, какая кнопка нажата    
+      if (canMsg.data[0] == steer_key_2)                      // Determine which button was pressed
       {       
         if (volume == 0)
         {
@@ -97,20 +97,20 @@ void loop()                   //запускаем цикл чтения дан�
           volume--;
         }
         
-        new_canMsg.can_id  = 0x122;                  //присваеваем id панели FMUX
-        new_canMsg.can_dlc = 8;                      //указываем длину пакета
-        new_canMsg.data[0] = 0x00;                   //пустые данные
-        new_canMsg.data[1] = 0x00;                   //пустые данные 
-        new_canMsg.data[2] = 0x00;                   //пустые данные
-        new_canMsg.data[3] = 0x00;                   //пустые данные 
-        new_canMsg.data[4] = 0x00;                   //пустые данные
-        new_canMsg.data[5] = front_panel_command;    //команда панели
-        new_canMsg.data[6] = volume;                 //присваеваем новый уровень громкости
-        new_canMsg.data[7] = 0x00;                   //пустые данные
+        new_canMsg.can_id  = 0x122;                  // Assign the FMUX panel ID
+        new_canMsg.can_dlc = 8;                      // Set the frame length
+        new_canMsg.data[0] = 0x00;                   // Empty data
+        new_canMsg.data[1] = 0x00;                   // Empty data
+        new_canMsg.data[2] = 0x00;                   // Empty data
+        new_canMsg.data[3] = 0x00;                   // Empty data
+        new_canMsg.data[4] = 0x00;                   // Empty data
+        new_canMsg.data[5] = front_panel_command;    // Panel command
+        new_canMsg.data[6] = volume;                 // Assign the new volume level
+        new_canMsg.data[7] = 0x00;                   // Empty data
         
-        mcp2515.sendMessage(&new_canMsg);            //отправляем новую команду изменения уровня громкости
+        mcp2515.sendMessage(&new_canMsg);            // Send the command to change the volume level
         
-        delay(150);                                  //задержка 0,15 сек.
+        delay(150);                                  // 0.15-second delay
       }
     }
   }
